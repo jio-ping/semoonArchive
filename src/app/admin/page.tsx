@@ -1,6 +1,9 @@
 export default function Page() {
   return (
     <form method="POST" action="/api/create">
+      <label htmlFor="videoEpisode">episodeNumber</label>
+      <input id="videoEpisode" placeholder="영상번호" name="videoEpisode" />
+
       <label htmlFor="videoTitle">title</label>
       <input id="videoTitle" placeholder="영상제목" name="videoTitle" />
       <label htmlFor="videoKeyword">keyword</label>
