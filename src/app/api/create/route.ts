@@ -2,32 +2,7 @@
 import { turso as db } from "@/lib/turso";
 
 import { NextRequest, NextResponse } from "next/server";
-/*
-FormData {
-  videoTitle: '',
-  videoKeyword: '',
-  videoKeyURL: '',
-  '4-A-1-title': '색,계',
-  '4-A-1-image': 'https://minumsa.minumsa.com/wp-content/uploads/bookcover/%EC%83%89%EA%B3%84_%ED%91%9C1-300x511.jpg',
-  '4-A-1-author': '장아이링',
-  '4-A-1-quotes': '또 시계를 쳐다보았다. 종아리에서 나간 스타킹 올이 천천히 위로 올라오듯이 실패했다는 예감이',
-  '4-A-2-title': '바스커빌가의 사냥개',
-  '4-A-2-image': 'https://minumsa.minumsa.com/wp-content/uploads/bookcover/448_%EB%B0%94%EC%8A%A4%EC%BB%A4%EB%B9%8C%EA%B0%80%EC%9D%98-%EC%82%AC%EB%83%A5%EA%B0%9C_%ED%91%9C1-300x511.jpg',
-  '4-A-2-author': '아서 코난 도일',
-  '4-A-2-quotes': '',
-  '4-B-1-title': '백년의 고독1',
-  '4-B-1-image': 'https://minumsa.minumsa.com/wp-content/uploads/bookcover/034_%EB%B0%B1%EB%85%84%EC%9D%98-%EA%B3%A0%EB%8F%851-300x505.jpg',
-  '4-B-1-author': '가브리엘 가르시아 마르케스',
-  '4-B-1-quotes': '',
-  '4-B-2-title': '표범',
-  '4-B-2-image': 'https://minumsa.minumsa.com/wp-content/uploads/bookcover/034_%EB%B0%B1%EB%85%84%EC%9D%98-%EA%B3%A0%EB%8F%851-300x505.jpg',
-  '4-B-2-author': '주세페 토마시 디 람페두사',
-  '4-B-2-quotes': '',
-  final: [ '색,계', '백년의 고독 1' ]
-}
-
-
-*/ export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
 
@@ -46,6 +21,7 @@ FormData {
       throw new Error("비디오 데이터 적재 실패");
     }
 
+    // 적재한 video row id
     const videoId = Number(videoInsert.lastInsertRowid);
 
     // books 테이블에 적재
@@ -65,20 +41,36 @@ FormData {
       if (title) booksData.push({ id, title, image, author, quotes });
     });
 
-    for (const book of booksData) {
-      const result = await db?.execute({
-        sql: "INSERT INTO Books (id, title, cover_image, author, quotes) VALUES (?, ?, ?, ?, ?)",
-        args: [
-          Number(book.id),
-          book.title,
-          book.image,
-          book.author,
-          book.quotes,
-        ],
-      });
+    // book이 이미 적재되어있는 데이터인지 체크
+    const existingBooks = await db?.execute({
+      sql: `SELECT id FROM Books WHERE id IN (${booksData
+        .map(() => "?")
+        .join(", ")})`,
+      args: booksData.map((book) => book.id),
+    });
 
+    const existingBookIds = new Set(existingBooks?.rows.map((row) => row.id));
+
+    const newBooks = booksData.filter(
+      (book) => !existingBookIds.has(Number(book.id))
+    );
+
+    // 적재할 책이 있을때만 실행
+    if (newBooks.length > 0) {
+      const values = newBooks.map(() => "(?, ?, ?, ?, ?)").join(", ");
+      const args = newBooks.flatMap((book) => [
+        Number(book.id),
+        book.title,
+        book.image,
+        book.author,
+        book.quotes,
+      ]);
+      const result = await db?.execute({
+        sql: `INSERT INTO Books (id, title, cover_image, author, quotes) VALUES ${values}`,
+        args,
+      });
       if (!result) {
-        throw new Error(`책 데이터 적재 실패: ${book.title}`);
+        throw new Error(`책 데이터 적재 실패`);
       }
     }
 
@@ -141,11 +133,13 @@ FormData {
     return NextResponse.json({
       message: "Tournament data inserted successfully",
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
     return NextResponse.json(
-      { message: `데이터 삽입 실패: ${error.message}` },
+      { message: `데이터 삽입 실패: ${(error as Error).message}` },
       { status: 500 }
     );
   }
 }
+
+// refactor 효율적인 방법 찾아보기
